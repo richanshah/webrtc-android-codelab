@@ -1,7 +1,7 @@
 {
-  "name": "webrtc-codelab",
+  "name": "webrtc",
   "version": "0.0.1",
-  "description": "WebRTC codelab",
+  "description": "WebRTC Final",
   "dependencies": {
     "node-static": "0.7.7",
     "socket.io": "1.2.0"

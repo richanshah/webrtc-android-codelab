@@ -1,27 +1,25 @@
+package xyz.vivekc.webrtccodelab
 
-package xyz.vivekc.webrtccodelab;
+import com.google.gson.annotations.Expose
+import com.google.gson.annotations.SerializedName
 
-import com.google.gson.annotations.Expose;
-import com.google.gson.annotations.SerializedName;
-
-public class IceServer {
-
+class IceServer {
     @SerializedName("url")
     @Expose
-    public String url;
+    var url: String? = null
+
     @SerializedName("username")
     @Expose
-    public String username;
+    var username: String? = null
+
     @SerializedName("credential")
     @Expose
-    public String credential;
-
-    @Override
-    public String toString() {
+    var credential: String? = null
+    override fun toString(): String {
         return "IceServer{" +
                 "url='" + url + '\'' +
                 ", username='" + username + '\'' +
                 ", credential='" + credential + '\'' +
-                '}';
+                '}'
     }
 }
