@@ -24,6 +24,6 @@ internal open class CustomSdpObserver(logTag: String?) : SdpObserver {
     }
 
     init {
-        tag = tag + " " + logTag
+        tag = "$tag $logTag"
     }
 }

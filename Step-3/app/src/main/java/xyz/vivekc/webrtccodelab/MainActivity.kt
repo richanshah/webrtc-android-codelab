@@ -25,26 +25,56 @@ import retrofit2.Callback
 import retrofit2.Response
 import xyz.vivekc.webrtccodelab.SignallingClient.SignalingInterface
 import java.io.UnsupportedEncodingException
+import java.util.*
+import kotlin.collections.ArrayList
 
 class MainActivity : AppCompatActivity(), View.OnClickListener, SignalingInterface {
-    var peerConnectionFactory: PeerConnectionFactory? = null
+
+
+    private val rootEglBase by lazy { EglBase.create() }
+
+    private val peerConnectionFactory: PeerConnectionFactory by lazy {
+        //Initialize PeerConnectionFactory globals.
+        val initializationOptions = InitializationOptions.builder(this)
+                .createInitializationOptions()
+
+        PeerConnectionFactory.initialize(initializationOptions)
+
+        //Create a new PeerConnectionFactory instance - using Hardware encoder and decoder.
+        val options = PeerConnectionFactory.Options()
+
+        val defaultVideoEncoderFactory = DefaultVideoEncoderFactory(
+                rootEglBase.eglBaseContext, /* enableIntelVp8Encoder */true, /* enableH264HighProfile */true)
+        val defaultVideoDecoderFactory = DefaultVideoDecoderFactory(rootEglBase.eglBaseContext)
+//        PeerConnectionFactory(options, defaultVideoEncoderFactory, defaultVideoDecoderFactory)
+        PeerConnectionFactory.builder()
+                .setOptions(options)
+                .setVideoEncoderFactory(defaultVideoEncoderFactory)
+                .setVideoDecoderFactory(defaultVideoDecoderFactory)
+                .createPeerConnectionFactory()
+
+    }
+
+    private var sdpConstraints: MediaConstraints? = null
+    private var localVideoTrack: VideoTrack? = null
+    private var localAudioTrack: AudioTrack? = null
+    var videoSource: VideoSource? = null
+    var audioSource: AudioSource? = null
+    var iceServers: MutableList<IceServer?>? = ArrayList()
     var audioConstraints: MediaConstraints? = null
     var videoConstraints: MediaConstraints? = null
-    var sdpConstraints: MediaConstraints? = null
-    var videoSource: VideoSource? = null
-    var localVideoTrack: VideoTrack? = null
-    var audioSource: AudioSource? = null
-    var localAudioTrack: AudioTrack? = null
+    private var localVideoView: SurfaceViewRenderer? = null
+    private var remoteVideoView: SurfaceViewRenderer? = null
+
+    private var hangup: Button? = null
     var surfaceTextureHelper: SurfaceTextureHelper? = null
-    lateinit var localVideoView: SurfaceViewRenderer
-    lateinit var remoteVideoView: SurfaceViewRenderer
-    lateinit var hangup: Button
-    lateinit var localPeer: PeerConnection
-    var iceServers: MutableList<IceServer?>? = ArrayList()
-    lateinit var rootEglBase: EglBase
-    var gotUserMedia = false
-    var peerIceServers: MutableList<PeerConnection.IceServer> = ArrayList()
-    val ALL_PERMISSIONS_CODE = 1
+
+    private var localPeer: PeerConnection? = null
+
+    private var gotUserMedia: Boolean = false
+    private var peerIceServers: MutableList<PeerConnection.IceServer> = ArrayList()
+
+    private val ALL_PERMISSIONS_CODE = 1
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
@@ -75,11 +105,11 @@ class MainActivity : AppCompatActivity(), View.OnClickListener, SignalingInterfa
     }
 
     private fun initVideos() {
-        rootEglBase = EglBase.create()
-        localVideoView.init(rootEglBase?.getEglBaseContext(), null)
-        remoteVideoView.init(rootEglBase?.eglBaseContext, null)
-        localVideoView.setZOrderMediaOverlay(true)
-        remoteVideoView.setZOrderMediaOverlay(true)
+//        rootEglBase = EglBase.create()
+        localVideoView?.init(rootEglBase?.getEglBaseContext(), null)
+        remoteVideoView?.init(rootEglBase?.eglBaseContext, null)
+        localVideoView?.setZOrderMediaOverlay(true)
+        remoteVideoView?.setZOrderMediaOverlay(false)
     }
 
     private fun getIceServers() {
@@ -91,8 +121,8 @@ class MainActivity : AppCompatActivity(), View.OnClickListener, SignalingInterfa
             e.printStackTrace()
         }
         val authToken = "Basic " + Base64.encodeToString(data, Base64.NO_WRAP)
-        Utils.getInstance()?.getRetrofitInstance()?.getIceCandidates(authToken)?.enqueue(object : Callback<TurnServerPojo?> {
-            override fun onResponse(call: Call<TurnServerPojo?>, response: Response<TurnServerPojo?>) {
+        Utils.getInstance()?.getRetrofitInstance()?.getIceCandidates(authToken)?.enqueue(object : Callback<TurnServerModel?> {
+            override fun onResponse(call: Call<TurnServerModel?>, response: Response<TurnServerModel?>) {
                 val body = response.body()
                 if (body != null) {
                     iceServers = body.iceServerList?.iceServers
@@ -104,77 +134,63 @@ class MainActivity : AppCompatActivity(), View.OnClickListener, SignalingInterfa
                             peerIceServers.add(peerIceServer)
                         } else {
                             val peerIceServer = PeerConnection.IceServer.builder(iceServer.url)
-                                    .setUsername(iceServer?.username)
-                                    .setPassword(iceServer?.credential)
+                                    .setUsername(iceServer.username)
+                                    .setPassword(iceServer.credential)
                                     .createIceServer()
                             peerIceServers.add(peerIceServer)
                         }
                     }
                 }
-                Log.d("onApiResponse", """
-     IceServers
-     ${iceServers.toString()}
-     """.trimIndent())
+                Log.d("onApiResponse", """IceServers${iceServers.toString()}""".trimIndent())
             }
 
-            override fun onFailure(call: Call<TurnServerPojo?>, t: Throwable) {
+            override fun onFailure(call: Call<TurnServerModel?>, t: Throwable) {
                 t.printStackTrace()
             }
         })
     }
 
-    fun start() {
+    private fun start() {
         // keep screen on
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         initViews()
         initVideos()
         getIceServers()
-        SignallingClient.getInstance()?.init(this)
+        SignallingClient.getInstance().init(this)
 
         //Initialize PeerConnectionFactory globals.
         val initializationOptions = InitializationOptions.builder(this)
                 .createInitializationOptions()
+
         PeerConnectionFactory.initialize(initializationOptions)
 
-        //Create a new PeerConnectionFactory instance - using Hardware encoder and decoder.
-        val options = PeerConnectionFactory.Options()
-        val defaultVideoEncoderFactory = DefaultVideoEncoderFactory(
-                rootEglBase?.getEglBaseContext(),  /* enableIntelVp8Encoder */true,  /* enableH264HighProfile */true)
-        val defaultVideoDecoderFactory = DefaultVideoDecoderFactory(rootEglBase?.getEglBaseContext())
-        peerConnectionFactory = PeerConnectionFactory.builder()
-                .setOptions(options)
-                .setVideoEncoderFactory(defaultVideoEncoderFactory)
-                .setVideoDecoderFactory(defaultVideoDecoderFactory)
-                .createPeerConnectionFactory()
-
         //Now create a VideoCapturer instance.
-        val videoCapturerAndroid: VideoCapturer?
-        videoCapturerAndroid = createCameraCapturer(Camera1Enumerator(false))
+        val videoCaptureAndroid: VideoCapturer? = createCameraCapturer(Camera1Enumerator(false))
 
         //Create MediaConstraints - Will be useful for specifying video and audio constraints.
         audioConstraints = MediaConstraints()
         videoConstraints = MediaConstraints()
 
         //Create a VideoSource instance
-        if (videoCapturerAndroid != null) {
-            surfaceTextureHelper = SurfaceTextureHelper.create("CaptureThread", rootEglBase?.getEglBaseContext())
-            videoSource = peerConnectionFactory?.createVideoSource(videoCapturerAndroid.isScreencast)
-            videoCapturerAndroid.initialize(surfaceTextureHelper, this, videoSource?.getCapturerObserver())
+        if (videoCaptureAndroid != null) {
+            surfaceTextureHelper = SurfaceTextureHelper.create(Constants.CAPTURE_THREAD, rootEglBase?.eglBaseContext)
+            videoSource = peerConnectionFactory.createVideoSource(videoCaptureAndroid.isScreencast)
+            videoCaptureAndroid.initialize(surfaceTextureHelper, this, videoSource?.getCapturerObserver())
         }
-        localVideoTrack = peerConnectionFactory?.createVideoTrack("100", videoSource)
+        localVideoTrack = peerConnectionFactory.createVideoTrack(Constants.VIDEO_TRACK_ID, videoSource)
 
         //create an AudioSource instance
-        audioSource = peerConnectionFactory?.createAudioSource(audioConstraints)
-        localAudioTrack = peerConnectionFactory?.createAudioTrack("101", audioSource)
-        videoCapturerAndroid?.startCapture(1024, 720, 30)
-        localVideoView.setVisibility(View.VISIBLE)
+        audioSource = peerConnectionFactory.createAudioSource(audioConstraints)
+        localAudioTrack = peerConnectionFactory.createAudioTrack(Constants.AUDIO_TRACK_ID, audioSource)
+        videoCaptureAndroid?.startCapture(Constants.VideoParams.WIDTH, Constants.VideoParams.HEIGHT, Constants.VideoParams.FPS)
+        localVideoView?.visibility = View.VISIBLE
         // And finally, with our VideoRenderer ready, we
         // can add our renderer to the VideoTrack.
         localVideoTrack?.addSink(localVideoView)
-        localVideoView.setMirror(true)
-        remoteVideoView.setMirror(true)
+        localVideoView?.setMirror(true)
+        remoteVideoView?.setMirror(true)
         gotUserMedia = true
-        if (SignallingClient.Companion.getInstance()?.isInitiator!!) {
+        if (SignallingClient.getInstance().isInitiator) {
             onTryToStart()
         }
     }
@@ -185,10 +201,11 @@ class MainActivity : AppCompatActivity(), View.OnClickListener, SignalingInterfa
      */
     override fun onTryToStart() {
         runOnUiThread {
-            if (!SignallingClient.Companion.getInstance()?.isStarted!! && localVideoTrack != null && SignallingClient.Companion.getInstance()?.isChannelReady!!) {
+            if (!SignallingClient.getInstance().isStarted &&
+                    localVideoTrack != null && SignallingClient.getInstance().isChannelReady) {
                 createPeerConnection()
-                SignallingClient.Companion.getInstance()?.isStarted = true
-                if (SignallingClient.Companion.getInstance()?.isInitiator!!) {
+                SignallingClient.getInstance().isStarted = true
+                if (SignallingClient.getInstance().isInitiator) {
                     doCall()
                 }
             }
@@ -196,7 +213,7 @@ class MainActivity : AppCompatActivity(), View.OnClickListener, SignalingInterfa
     }
 
     /**
-     * Creating the local peerconnection instance
+     * Creating the local peer connection instance
      */
     private fun createPeerConnection() {
         val rtcConfig = RTCConfiguration(peerIceServers)
@@ -208,7 +225,7 @@ class MainActivity : AppCompatActivity(), View.OnClickListener, SignalingInterfa
         rtcConfig.continualGatheringPolicy = PeerConnection.ContinualGatheringPolicy.GATHER_CONTINUALLY
         // Use ECDSA encryption.
         rtcConfig.keyType = PeerConnection.KeyType.ECDSA
-        localPeer = peerConnectionFactory?.createPeerConnection(rtcConfig, object : CustomPeerConnectionObserver("localPeerCreation") {
+        localPeer = peerConnectionFactory.createPeerConnection(rtcConfig, object : CustomPeerConnectionObserver("localPeerCreation") {
             override fun onIceCandidate(iceCandidate: IceCandidate?) {
                 super.onIceCandidate(iceCandidate)
                 onIceCandidateReceived(iceCandidate)
@@ -224,14 +241,14 @@ class MainActivity : AppCompatActivity(), View.OnClickListener, SignalingInterfa
     }
 
     /**
-     * Adding the stream to the localpeer
+     * Adding the stream to the local peer
      */
     private fun addStreamToLocalPeer() {
         //creating local mediastream
-        val stream = peerConnectionFactory?.createLocalMediaStream("102")
+        val stream = peerConnectionFactory.createLocalMediaStream(Constants.LOCAL_MEDIA_STREAM_TRACK_ID)
         stream?.addTrack(localAudioTrack)
         stream?.addTrack(localVideoTrack)
-        localPeer.addStream(stream)
+        localPeer?.addStream(stream)
     }
 
     /**
@@ -241,15 +258,15 @@ class MainActivity : AppCompatActivity(), View.OnClickListener, SignalingInterfa
     private fun doCall() {
         sdpConstraints = MediaConstraints()
         sdpConstraints?.mandatory?.add(
-                MediaConstraints.KeyValuePair("OfferToReceiveAudio", "true"))
+                MediaConstraints.KeyValuePair(Constants.OFFER_TO_RECEIVE_AUDIO, "true"))
         sdpConstraints?.mandatory?.add(
-                MediaConstraints.KeyValuePair("OfferToReceiveVideo", "true"))
-        localPeer.createOffer(object : CustomSdpObserver("localCreateOffer") {
+                MediaConstraints.KeyValuePair(Constants.OFFER_TO_RECEIVE_AUDIO, "true"))
+        localPeer?.createOffer(object : CustomSdpObserver(Constants.LOCAL_CREATE_OFFER) {
             override fun onCreateSuccess(sessionDescription: SessionDescription?) {
                 super.onCreateSuccess(sessionDescription)
-                localPeer?.setLocalDescription(CustomSdpObserver("localSetLocalDesc"), sessionDescription)
+                localPeer?.setLocalDescription(CustomSdpObserver(Constants.LOCAL_SET_LOCAL_DESC), sessionDescription)
                 Log.d("onCreateSuccess", "SignallingClient emit ")
-                SignallingClient.Companion.getInstance()?.emitMessage(sessionDescription)
+                SignallingClient.getInstance().emitMessage(sessionDescription)
             }
         }, sdpConstraints)
     }
@@ -262,7 +279,7 @@ class MainActivity : AppCompatActivity(), View.OnClickListener, SignalingInterfa
         val videoTrack = stream!!.videoTracks[0]
         runOnUiThread {
             try {
-                remoteVideoView.setVisibility(View.VISIBLE)
+                remoteVideoView?.setVisibility(View.VISIBLE)
                 videoTrack.addSink(remoteVideoView)
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -275,7 +292,7 @@ class MainActivity : AppCompatActivity(), View.OnClickListener, SignalingInterfa
      */
     fun onIceCandidateReceived(iceCandidate: IceCandidate?) {
         //we have received ice candidate. We can set it to the other peer.
-        SignallingClient.Companion.getInstance()?.emitIceCandidate(iceCandidate)
+        SignallingClient.getInstance().emitIceCandidate(iceCandidate)
     }
 
     /**
@@ -284,7 +301,7 @@ class MainActivity : AppCompatActivity(), View.OnClickListener, SignalingInterfa
     override fun onCreatedRoom() {
         showToast("You created the room $gotUserMedia")
         if (gotUserMedia) {
-            SignallingClient.Companion.getInstance()?.emitMessage("got user media")
+            SignallingClient.getInstance().emitMessage("got user media")
         }
     }
 
@@ -294,7 +311,7 @@ class MainActivity : AppCompatActivity(), View.OnClickListener, SignalingInterfa
     override fun onJoinedRoom() {
         showToast("You joined the room $gotUserMedia")
         if (gotUserMedia) {
-            SignallingClient.Companion.getInstance()?.emitMessage("got user media")
+            SignallingClient.getInstance().emitMessage("got user media")
         }
     }
 
@@ -313,11 +330,11 @@ class MainActivity : AppCompatActivity(), View.OnClickListener, SignalingInterfa
     override fun onOfferReceived(data: JSONObject?) {
         showToast("Received Offer")
         runOnUiThread {
-            if (!SignallingClient.Companion.getInstance()?.isInitiator!! && !SignallingClient.Companion.getInstance()?.isStarted!!) {
+            if (!SignallingClient.getInstance().isInitiator && !SignallingClient.getInstance().isStarted) {
                 onTryToStart()
             }
             try {
-                localPeer?.setRemoteDescription(CustomSdpObserver("localSetRemote"), SessionDescription(SessionDescription.Type.OFFER, data?.getString("sdp")))
+                localPeer?.setRemoteDescription(CustomSdpObserver(Constants.LOCAL_SET_REMOTE), SessionDescription(SessionDescription.Type.OFFER, data?.getString("sdp")))
                 doAnswer()
                 updateVideoViews(true)
             } catch (e: JSONException) {
@@ -327,11 +344,11 @@ class MainActivity : AppCompatActivity(), View.OnClickListener, SignalingInterfa
     }
 
     private fun doAnswer() {
-        localPeer?.createAnswer(object : CustomSdpObserver("localCreateAns") {
+        localPeer?.createAnswer(object : CustomSdpObserver(Constants.LOCAL_CREATE_ANS) {
             override fun onCreateSuccess(sessionDescription: SessionDescription?) {
                 super.onCreateSuccess(sessionDescription)
-                localPeer?.setLocalDescription(CustomSdpObserver("localSetLocal"), sessionDescription)
-                SignallingClient.Companion.getInstance()?.emitMessage(sessionDescription)
+                localPeer?.setLocalDescription(CustomSdpObserver(Constants.LOCAL_SET_LOCAL), sessionDescription)
+                SignallingClient.getInstance().emitMessage(sessionDescription)
             }
         }, MediaConstraints())
     }
@@ -342,7 +359,8 @@ class MainActivity : AppCompatActivity(), View.OnClickListener, SignalingInterfa
     override fun onAnswerReceived(data: JSONObject?) {
         showToast("Received Answer")
         try {
-            localPeer?.setRemoteDescription(CustomSdpObserver("localSetRemote"), SessionDescription(SessionDescription.Type.fromCanonicalForm(data?.getString("type")?.toLowerCase()), data?.getString("sdp")))
+            localPeer?.setRemoteDescription(CustomSdpObserver(Constants.LOCAL_SET_REMOTE),
+                    SessionDescription(SessionDescription.Type.fromCanonicalForm(data?.getString("type")?.toLowerCase(Locale.getDefault())), data?.getString("sdp")))
             updateVideoViews(true)
         } catch (e: JSONException) {
             e.printStackTrace()
@@ -360,24 +378,25 @@ class MainActivity : AppCompatActivity(), View.OnClickListener, SignalingInterfa
         }
     }
 
+    //Make remoteVisible false if you want to remove remote view
     private fun updateVideoViews(remoteVisible: Boolean) {
         runOnUiThread {
-            var params = localVideoView.getLayoutParams()
+            var params = localVideoView?.getLayoutParams()
             if (remoteVisible) {
-                params.height = dpToPx(100)
-                params.width = dpToPx(100)
+                params?.height = dpToPx(100)
+                params?.width = dpToPx(100)
             } else {
                 params = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
             }
-            localVideoView.setLayoutParams(params)
+            localVideoView?.setLayoutParams(params)
         }
     }
 
     /**
-     * Closing up - normal hangup and app destroye
+     * Closing up - normal hangup and app destroy
      */
     override fun onClick(v: View?) {
-        when (v?.getId()) {
+        when (v?.id) {
             R.id.end_call -> {
                 hangup()
             }
@@ -389,8 +408,8 @@ class MainActivity : AppCompatActivity(), View.OnClickListener, SignalingInterfa
             if (localPeer != null) {
                 localPeer?.close()
             }
-//            localPeer = null
-            SignallingClient.Companion.getInstance()?.close()
+            localPeer = null
+            SignallingClient.getInstance().close()
             updateVideoViews(false)
         } catch (e: Exception) {
             e.printStackTrace()
@@ -398,7 +417,7 @@ class MainActivity : AppCompatActivity(), View.OnClickListener, SignalingInterfa
     }
 
     override fun onDestroy() {
-        SignallingClient.Companion.getInstance()?.close()
+        SignallingClient.getInstance().close()
         super.onDestroy()
         if (surfaceTextureHelper != null) {
             surfaceTextureHelper?.dispose()
@@ -427,9 +446,9 @@ class MainActivity : AppCompatActivity(), View.OnClickListener, SignalingInterfa
             if (enumerator != null) {
                 if (enumerator.isFrontFacing(deviceName)) {
                     Logging.d(TAG, "Creating front facing camera capturer.")
-                    val videoCapturer: VideoCapturer? = enumerator.createCapturer(deviceName, null)
-                    if (videoCapturer != null) {
-                        return videoCapturer
+                    val videoCapture: VideoCapturer? = enumerator.createCapturer(deviceName, null)
+                    if (videoCapture != null) {
+                        return videoCapture
                     }
                 }
             }
@@ -438,9 +457,9 @@ class MainActivity : AppCompatActivity(), View.OnClickListener, SignalingInterfa
         // Front facing camera not found, try something else
         Logging.d(TAG, "Looking for other cameras.")
         for (deviceName in deviceNames) {
-            if (!enumerator?.isFrontFacing(deviceName)!!) {
+            if (!enumerator?.isFrontFacing(deviceName)) {
                 Logging.d(TAG, "Creating other camera capturer.")
-                val videoCapturer: VideoCapturer? = enumerator.createCapturer(deviceName, null)
+                val videoCapturer: VideoCapturer? = enumerator?.createCapturer(deviceName, null)
                 if (videoCapturer != null) {
                     return videoCapturer
                 }

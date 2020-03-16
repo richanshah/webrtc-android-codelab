@@ -19,6 +19,7 @@ class Utils {
 
     companion object {
         private var instance: Utils? = null
+        //global webrtc cloud server
         val API_ENDPOINT: String? = "https://global.xirsys.net"
         fun getInstance(): Utils? {
             if (instance == null) {

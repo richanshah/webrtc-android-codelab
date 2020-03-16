@@ -3,7 +3,7 @@ package xyz.vivekc.webrtccodelab
 import com.google.gson.annotations.Expose
 import com.google.gson.annotations.SerializedName
 
-class TurnServerPojo {
+class TurnServerModel {
     @SerializedName("s")
     @Expose
     var s: Int? = null
