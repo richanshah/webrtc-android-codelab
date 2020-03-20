@@ -1,6 +1,10 @@
 package xyz.vivekc.webrtccodelab
 
 import android.Manifest
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.util.Base64
@@ -15,16 +19,13 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import org.json.JSONException
 import org.json.JSONObject
 import org.webrtc.*
 import org.webrtc.PeerConnection.RTCConfiguration
 import org.webrtc.PeerConnectionFactory.InitializationOptions
-import retrofit2.Call
-import retrofit2.Callback
-import retrofit2.Response
 import xyz.vivekc.webrtccodelab.SignallingClient.SignalingInterface
-import java.io.UnsupportedEncodingException
 import java.util.*
 import kotlin.collections.ArrayList
 
@@ -32,7 +33,9 @@ class MainActivity : AppCompatActivity(), View.OnClickListener, SignalingInterfa
 
 
     private val rootEglBase by lazy { EglBase.create() }
-
+    private lateinit var mqttHelper: MqttHelper
+    private var mqttBroadcastReceiver = MqttBroadcastReceiver()
+    private var mqttBroadcastDataReceiver = MqttBroadcastDataReceiver()
     private val peerConnectionFactory: PeerConnectionFactory by lazy {
         //Initialize PeerConnectionFactory globals.
         val initializationOptions = InitializationOptions.builder(this)
@@ -46,7 +49,6 @@ class MainActivity : AppCompatActivity(), View.OnClickListener, SignalingInterfa
         val defaultVideoEncoderFactory = DefaultVideoEncoderFactory(
                 rootEglBase.eglBaseContext, /* enableIntelVp8Encoder */true, /* enableH264HighProfile */true)
         val defaultVideoDecoderFactory = DefaultVideoDecoderFactory(rootEglBase.eglBaseContext)
-//        PeerConnectionFactory(options, defaultVideoEncoderFactory, defaultVideoDecoderFactory)
         PeerConnectionFactory.builder()
                 .setOptions(options)
                 .setVideoEncoderFactory(defaultVideoEncoderFactory)
@@ -60,7 +62,7 @@ class MainActivity : AppCompatActivity(), View.OnClickListener, SignalingInterfa
     private var localAudioTrack: AudioTrack? = null
     var videoSource: VideoSource? = null
     var audioSource: AudioSource? = null
-    var iceServers: MutableList<IceServer?>? = ArrayList()
+
     var audioConstraints: MediaConstraints? = null
     var videoConstraints: MediaConstraints? = null
     private var localVideoView: SurfaceViewRenderer? = null
@@ -75,10 +77,35 @@ class MainActivity : AppCompatActivity(), View.OnClickListener, SignalingInterfa
     private var peerIceServers: MutableList<PeerConnection.IceServer> = ArrayList()
 
     private val ALL_PERMISSIONS_CODE = 1
+
+    /**
+     * This method will subscribe the mqtt client
+     */
+    private fun subscribeMQTT() {
+        try {
+            mqttHelper = MqttHelper(applicationContext, BuildConfig.BROKE_SUBSCRIPTION_CHANNEL)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    inner class MqttBroadcastDataReceiver : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            val b = intent?.extras
+            /*storeMqttDataOnList(
+                    b?.getString(Constants.MQTT_DATA_MAC_ADDRESS)!!,
+                    b?.getString(Constants.MQTT_DATA_APPLICATION_DATA)!!,
+                    b?.getString(Constants.MQTT_DATA_RELAY_IDENTIFICATION)!!
+            )*/
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED
+//        EventBus.getDefault().register(this); //register here or onStart, etc
+
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED || ContextCompat.checkSelfPermission(this, Manifest.permission.READ_PHONE_STATE) != PackageManager.PERMISSION_GRANTED
                 || ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(this, arrayOf<String?>(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO), ALL_PERMISSIONS_CODE)
         } else {
@@ -113,7 +140,15 @@ class MainActivity : AppCompatActivity(), View.OnClickListener, SignalingInterfa
     }
 
     private fun getIceServers() {
-        //get Ice servers using xirsys
+//        var peerIceServer = PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer()
+
+        peerIceServers.add(PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer())
+        peerIceServers.add(PeerConnection.IceServer.builder("stun:stun1.l.google.com:19302").createIceServer())
+        peerIceServers.add(PeerConnection.IceServer.builder("stun:stun2.l.google.com:19302").createIceServer())
+        peerIceServers.add(PeerConnection.IceServer.builder("stun:stun3.l.google.com:19302").createIceServer())
+        peerIceServers.add(PeerConnection.IceServer.builder("stun:stun4.l.google.com:19302").createIceServer())
+
+  /*      //get Ice servers using xirsys
         var data = ByteArray(0)
         try {
             data = "<xirsys_ident>:<xirsys_secret>".toByteArray(charset("UTF-8"))
@@ -147,16 +182,88 @@ class MainActivity : AppCompatActivity(), View.OnClickListener, SignalingInterfa
             override fun onFailure(call: Call<TurnServerModel?>, t: Throwable) {
                 t.printStackTrace()
             }
-        })
+        })*/
+    }
+
+    private fun registerMQTTReceivers() {
+        try {
+            mqttBroadcastReceiver?.let {
+                LocalBroadcastManager.getInstance(this).registerReceiver(
+                        it, IntentFilter(
+                        Constants.MQTT_CONNECTION_SUCCESS
+                )
+                )
+                LocalBroadcastManager.getInstance(this)
+                        .registerReceiver(it, IntentFilter(Constants.MQTT_CONNECTION_FAILURE))
+                LocalBroadcastManager.getInstance(this)
+                        .registerReceiver(it, IntentFilter(Constants.MQTT_CONNECTION_LOST))
+                LocalBroadcastManager.getInstance(this)
+                        .registerReceiver(it, IntentFilter(Constants.MQTT_SUBSCRIBE_SUCCESS))
+                LocalBroadcastManager.getInstance(this)
+                        .registerReceiver(it, IntentFilter(Constants.MQTT_SUBSCRIBE_FAILURE))
+                LocalBroadcastManager.getInstance(this)
+                        .registerReceiver(it, IntentFilter(Constants.MQTT_UNSUBSCRIBE_SUCCESS))
+                LocalBroadcastManager.getInstance(this)
+                        .registerReceiver(it, IntentFilter(Constants.MQTT_UNSUBSCRIBE_FAILURE))
+                LocalBroadcastManager.getInstance(this)
+                        .registerReceiver(it, IntentFilter(Constants.MQTT_MESSAGE_PAYLOAD))
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        subscribeMQTT()
+
+        registerMQTTReceivers()
+        mqttBroadcastDataReceiver?.let {
+            LocalBroadcastManager.getInstance(this).registerReceiver(
+                    mqttBroadcastDataReceiver!!,
+                    IntentFilter(Constants.BROADCAST_PAYLOAD_MQTT)
+            )
+        }
+
+    }
+
+    override fun onPause() {
+        super.onPause()
+        mqttBroadcastReceiver?.let {
+            LocalBroadcastManager.getInstance(this).unregisterReceiver(it)
+        }
+        mqttBroadcastDataReceiver?.let {
+            LocalBroadcastManager.getInstance(this).unregisterReceiver(mqttBroadcastDataReceiver!!)
+        }
+
+    }
+
+
+    override fun onStop() {
+        super.onStop()
+        disconnectMQTT()
+    }
+
+    /**
+     * This method will unregister the Mqtt client
+     */
+
+    private fun disconnectMQTT() {
+        try {
+            mqttHelper?.mqttAndroidClient.disconnect()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     private fun start() {
         // keep screen on
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+
         initViews()
         initVideos()
         getIceServers()
-        SignallingClient.getInstance().init(this)
+//        SignallingClient.getInstance().init(this)
 
         //Initialize PeerConnectionFactory globals.
         val initializationOptions = InitializationOptions.builder(this)
@@ -190,9 +297,8 @@ class MainActivity : AppCompatActivity(), View.OnClickListener, SignalingInterfa
         localVideoView?.setMirror(true)
         remoteVideoView?.setMirror(true)
         gotUserMedia = true
-        if (SignallingClient.getInstance().isInitiator) {
-            onTryToStart()
-        }
+
+        onTryToStart()
     }
 
     /**
@@ -201,13 +307,10 @@ class MainActivity : AppCompatActivity(), View.OnClickListener, SignalingInterfa
      */
     override fun onTryToStart() {
         runOnUiThread {
-            if (!SignallingClient.getInstance().isStarted &&
-                    localVideoTrack != null && SignallingClient.getInstance().isChannelReady) {
+            if (localVideoTrack != null) {
                 createPeerConnection()
-                SignallingClient.getInstance().isStarted = true
-                if (SignallingClient.getInstance().isInitiator) {
-                    doCall()
-                }
+                doCall()
+
             }
         }
     }
@@ -219,16 +322,48 @@ class MainActivity : AppCompatActivity(), View.OnClickListener, SignalingInterfa
         val rtcConfig = RTCConfiguration(peerIceServers)
         // TCP candidates are only useful when connecting to a server that supports
         // ICE-TCP.
-        rtcConfig.tcpCandidatePolicy = PeerConnection.TcpCandidatePolicy.DISABLED
+/*        rtcConfig.tcpCandidatePolicy = PeerConnection.TcpCandidatePolicy.DISABLED
         rtcConfig.bundlePolicy = PeerConnection.BundlePolicy.MAXBUNDLE
-        rtcConfig.rtcpMuxPolicy = PeerConnection.RtcpMuxPolicy.REQUIRE
+        rtcConfig.rtcpMuxPolicy = PeerConnection.RtcpMuxPolicy.REQUIRE*/
         rtcConfig.continualGatheringPolicy = PeerConnection.ContinualGatheringPolicy.GATHER_CONTINUALLY
         // Use ECDSA encryption.
-        rtcConfig.keyType = PeerConnection.KeyType.ECDSA
+//        rtcConfig.keyType = PeerConnection.KeyType.ECDSA
         localPeer = peerConnectionFactory.createPeerConnection(rtcConfig, object : CustomPeerConnectionObserver("localPeerCreation") {
             override fun onIceCandidate(iceCandidate: IceCandidate?) {
                 super.onIceCandidate(iceCandidate)
                 onIceCandidateReceived(iceCandidate)
+            }
+
+            override fun onIceGatheringChange(p0: PeerConnection.IceGatheringState?) {
+                if (p0 != null && p0 == PeerConnection.IceGatheringState.COMPLETE) {
+                    Log.d(TAG, "ICE Complete")
+
+                    if (localPeer?.localDescription?.type == SessionDescription.Type.OFFER) {
+                        Log.d(TAG, "SDP Offer")
+                        val pingResult = getPingPacket(localPeer?.localDescription!!)
+                        val charset = Charsets.UTF_8
+                        var data = pingResult.toByteArray(charset)
+                        val encodedData = Base64.encodeToString(data, Base64.NO_WRAP)
+                        println("encodedData$encodedData")
+                        val mqttPublishEvent = MqttPublishEvent()
+                        mqttPublishEvent.topic = BuildConfig.NOTIFICATIONS_SUBSCRIPTION_CHANNEL
+                        mqttPublishEvent.bytMessage = encodedData.trim().toByteArray(charset)
+                        mqttHelper.publish(BuildConfig.NOTIFICATIONS_SUBSCRIPTION_CHANNEL, encodedData.trim().toByteArray(charset))
+                        Log.d("published", mqttPublishEvent.bytMessage!!.contentToString())
+                    } else if (localPeer?.localDescription?.type == SessionDescription.Type.ANSWER) {
+                        Log.d(TAG, "SDP Answer")
+
+                        val mqttPublishEvent = MqttPublishEvent()
+                        mqttPublishEvent.topic = BuildConfig.NOTIFICATIONS_SUBSCRIPTION_CHANNEL
+//                        mqttPublishEvent.message = getAnswerPacket(peerConnection.localDescription)
+//                        EventBus.getDefault().post(mqttPublishEvent)
+                    } else {
+                        Log.d(TAG, "SDP Unknown")
+                    }
+
+//                    rtcListener.onSdpReady()
+                }
+
             }
 
             override fun onAddStream(mediaStream: MediaStream?) {
@@ -238,6 +373,12 @@ class MainActivity : AppCompatActivity(), View.OnClickListener, SignalingInterfa
             }
         })!!
         addStreamToLocalPeer()
+    }
+
+    fun getPingPacket(sessionDescription: SessionDescription): String {
+        return com.eclipsesource.json.JsonObject()
+                .add("type", sessionDescription.type.toString().toLowerCase())
+                .add("sdp", sessionDescription.description).toString().trim()
     }
 
     /**
@@ -260,13 +401,24 @@ class MainActivity : AppCompatActivity(), View.OnClickListener, SignalingInterfa
         sdpConstraints?.mandatory?.add(
                 MediaConstraints.KeyValuePair(Constants.OFFER_TO_RECEIVE_AUDIO, "true"))
         sdpConstraints?.mandatory?.add(
-                MediaConstraints.KeyValuePair(Constants.OFFER_TO_RECEIVE_AUDIO, "true"))
+                MediaConstraints.KeyValuePair(Constants.OFFER_TO_RECEIVE_VIDEO, "true"))
         localPeer?.createOffer(object : CustomSdpObserver(Constants.LOCAL_CREATE_OFFER) {
             override fun onCreateSuccess(sessionDescription: SessionDescription?) {
                 super.onCreateSuccess(sessionDescription)
                 localPeer?.setLocalDescription(CustomSdpObserver(Constants.LOCAL_SET_LOCAL_DESC), sessionDescription)
-                Log.d("onCreateSuccess", "SignallingClient emit ")
-                SignallingClient.getInstance().emitMessage(sessionDescription)
+                Log.d("onCreateSuccess", "SignallingClient emit " + sessionDescription.toString())
+//                SignallingClient.getInstance().emitMessage(sessionDescription)
+                val pingResult = sessionDescription?.let { getPingPacket(it) }
+                val charset = Charsets.UTF_8
+                var data = pingResult?.toByteArray(charset)
+                val encodedData = Base64.encodeToString(data, Base64.NO_WRAP)
+                println("encodedData$encodedData")
+                val mqttPublishEvent = MqttPublishEvent()
+                mqttPublishEvent.topic = BuildConfig.NOTIFICATIONS_SUBSCRIPTION_CHANNEL
+                mqttPublishEvent.bytMessage = encodedData.trim().toByteArray(charset)
+                mqttHelper.publish(BuildConfig.NOTIFICATIONS_SUBSCRIPTION_CHANNEL, encodedData.trim().toByteArray(charset))
+                Log.d("published", mqttPublishEvent.bytMessage!!.contentToString())
+
             }
         }, sdpConstraints)
     }

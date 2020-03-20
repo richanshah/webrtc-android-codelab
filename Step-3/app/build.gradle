@@ -17,15 +17,62 @@ android {
         jvmTarget = '1.8'
     }
     buildTypes {
-        release {
+        debug {
             minifyEnabled false
-            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
-
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
+    }
+    flavorDimensions "HOST_URL"
+    productFlavors {
+        envDev {
+            dimension "HOST_URL"
+            applicationIdSuffix ".dev"
+            versionNameSuffix "-dev"
+            buildConfigField "Boolean", "isDev", "true"
+            buildConfigField("String", "HOST_URL", '"http://3.214.104.246:8080"')
+            buildConfigField("String", "BASE_URL_FOR_IMAGE", '"http://3.214.104.246:8080"')
+//            buildConfigField("String", "BASE_URL_FOR_MEDIA", '"http://192.168.50.5:8080"')
+            buildConfigField("String", "BASE_URL_FOR_MEDIA", '"http://203.129.213.117:8080"')
+            buildConfigField("String", "BASE_URL_FOR_CAMERA", '"http://203.129.213.126:8181"')
+   /*         buildConfigField("String", "MQTT_URL", '"tcp://3.214.104.246:1883"')
+            buildConfigField("String", "MQTT_USER", '"ss_mqtt_cloud_client"')
+            buildConfigField("String", "MQTT_PASSWORD", '"uM3yvX9vw2gWAsa3fMh"')
+            buildConfigField("String", "BROKE_SUBSCRIPTION_CHANNEL", '"SS_BROKER_IOT_OFFICE"')
+            buildConfigField("String", "NOTIFICATIONS_SUBSCRIPTION_CHANNEL", '"SS_SUB_NOTIFICATION_IOT_OFFICE"')*/
+            buildConfigField("String", "MQTT_URL", '"tcp://3.214.104.246:1883"')
+            buildConfigField("String", "MQTT_USER", '"mqtt_dev_user"')
+            buildConfigField("String", "MQTT_PASSWORD", '"Sm@rt#123$"')
+            buildConfigField("String", "BROKE_SUBSCRIPTION_CHANNEL", '"SS_WEBRTC_MOBILE"')
+            buildConfigField("String", "NOTIFICATIONS_SUBSCRIPTION_CHANNEL", '"SS_WEBRTC_GO"')
+      /*      buildConfigField("String", "BROKE_SUBSCRIPTION_CHANNEL", '"SS_BROKER_IOT_OFFICE"')
+            buildConfigField("String", "NOTIFICATIONS_SUBSCRIPTION_CHANNEL", '"SS_SUB_NOTIFICATION_IOT_OFFICE"')*/
+          /*  buildConfigField("String", "MQTT_URL", '"tcp://mqtt.smartsensesolutions.com:1883"')
+            buildConfigField("String", "MQTT_USER", '"ss_mqtt_iot_user"')
+            buildConfigField("String", "MQTT_PASSWORD", '"YLX8AvGdk5JMJBwx6FExJWtQ4H5993An"')*/
+          /*  buildConfigField("String", "BROKE_SUBSCRIPTION_CHANNEL", '"SS_BROKER_IOT_AUTOMATION_MASTER"')
+            buildConfigField("String", "NOTIFICATIONS_SUBSCRIPTION_CHANNEL", '"SS_NOTIFICATION_SUB_IOT"')*/
+            buildConfigField("String", "STATIC_TOKEN", '"Bearer XMzDdG4D03CKm2IxIWQw7g=="')
+        }
+
+        envProd {
+            dimension "HOST_URL"
+            versionNameSuffix ""
+            buildConfigField "Boolean", "isDev", "false"
+            buildConfigField("String", "HOST_URL", '"https://soapi.smartsensesolutions.com"')
+            buildConfigField("String", "BASE_URL_FOR_IMAGE", '"https://soapi.smartsensesolutions.com"')
+            buildConfigField("String", "BASE_URL_FOR_MEDIA", '"http://192.168.50.5:8080"')
+            //buildConfigField("String", "BASE_URL_FOR_MEDIA", '"http://203.129.213.117:8080"')
+            buildConfigField("String", "BASE_URL_FOR_CAMERA", '"https://streaming.smartsensesolutions.com"')
+            buildConfigField("String", "MQTT_URL", '"tcp://mqtt.smartsensesolutions.com:1883"')
+            buildConfigField("String", "MQTT_USER", '"ss_mqtt_iot_user"')
+            buildConfigField("String", "MQTT_PASSWORD", '"YLX8AvGdk5JMJBwx6FExJWtQ4H5993An"')
+            buildConfigField("String", "BROKE_SUBSCRIPTION_CHANNEL", '"SS_BROKER_IOT_AUTOMATION_MASTER"')
+            buildConfigField("String", "NOTIFICATIONS_SUBSCRIPTION_CHANNEL", '"SS_NOTIFICATION_SUB_IOT"')
+            buildConfigField("String", "STATIC_TOKEN", '"Bearer bmdWOVhtV0xQYXpOZnRhalROTkZKcmgzV0NORXVwenE="')
+        }
     }
     buildToolsVersion = '29.0.3'
 }
@@ -47,6 +94,15 @@ dependencies {
     implementation 'com.google.code.gson:gson:2.8.5'
     implementation 'com.squareup.retrofit2:retrofit:2.6.0'
     implementation 'com.squareup.retrofit2:converter-gson:2.6.0'
+    implementation 'com.eclipsesource.minimal-json:minimal-json:0.9.4'
+
+    implementation 'org.eclipse.paho:org.eclipse.paho.client.mqttv3:1.2.0'
+    implementation 'org.eclipse.paho:org.eclipse.paho.android.service:1.1.1'
+    implementation 'androidx.core:core-ktx:1.1.0'
+    implementation 'androidx.localbroadcastmanager:localbroadcastmanager:1.0.0'
+    implementation 'org.greenrobot:eventbus:3.0.0'
+
+
 }
 repositories {
     mavenCentral()
