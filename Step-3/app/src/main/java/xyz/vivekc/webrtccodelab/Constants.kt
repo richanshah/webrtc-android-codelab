@@ -3,7 +3,7 @@ package xyz.vivekc.webrtccodelab
 open class Constants {
     companion object {
 
-        const val SOCKET_HOST_URL = "https://192.168.0.196:8080"
+        const val SOCKET_HOST_URL = "https://192.168.43.252:8080"
         const val ROOM_NAME = "smart"
         const val VIDEO_TRACK_ID = "100"
         const val AUDIO_TRACK_ID = "101"

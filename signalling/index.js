@@ -15,7 +15,7 @@ var fileServer = new(nodeStatic.Server)();
 var app = https.createServer(options,function(req, res) {
   fileServer.serve(req, res);
 
-}).listen(8080, "192.168.0.196");
+}).listen(8080, "192.168.43.252");
 
 var io = socketIO.listen(app);
 io.sockets.on('connection', function(socket) {

@@ -155,7 +155,12 @@ class MainActivity : AppCompatActivity(), View.OnClickListener, SignalingInterfa
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         initViews()
         initVideos()
-        getIceServers()
+        val peerIceServer = PeerConnection.IceServer.builder("stun:stun1.l.google.com:19302").createIceServer()
+        peerIceServers.add(PeerConnection.IceServer.builder("stun:stun2.l.google.com:19302").createIceServer())
+        peerIceServers.add(PeerConnection.IceServer.builder("stun:stun3.l.google.com:19302").createIceServer())
+        peerIceServers.add(PeerConnection.IceServer.builder("stun:stun4.l.google.com:19302").createIceServer())
+        peerIceServers.add(peerIceServer)
+//        getIceServers()
         SignallingClient.getInstance().init(this)
 
         //Initialize PeerConnectionFactory globals.
@@ -219,12 +224,12 @@ class MainActivity : AppCompatActivity(), View.OnClickListener, SignalingInterfa
         val rtcConfig = RTCConfiguration(peerIceServers)
         // TCP candidates are only useful when connecting to a server that supports
         // ICE-TCP.
-        rtcConfig.tcpCandidatePolicy = PeerConnection.TcpCandidatePolicy.DISABLED
-        rtcConfig.bundlePolicy = PeerConnection.BundlePolicy.MAXBUNDLE
-        rtcConfig.rtcpMuxPolicy = PeerConnection.RtcpMuxPolicy.REQUIRE
-        rtcConfig.continualGatheringPolicy = PeerConnection.ContinualGatheringPolicy.GATHER_CONTINUALLY
-        // Use ECDSA encryption.
-        rtcConfig.keyType = PeerConnection.KeyType.ECDSA
+        /*  rtcConfig.tcpCandidatePolicy = PeerConnection.TcpCandidatePolicy.DISABLED
+          rtcConfig.bundlePolicy = PeerConnection.BundlePolicy.MAXBUNDLE
+          rtcConfig.rtcpMuxPolicy = PeerConnection.RtcpMuxPolicy.REQUIRE
+          rtcConfig.continualGatheringPolicy = PeerConnection.ContinualGatheringPolicy.GATHER_CONTINUALLY
+          // Use ECDSA encryption.
+          rtcConfig.keyType = PeerConnection.KeyType.ECDSA*/
         localPeer = peerConnectionFactory.createPeerConnection(rtcConfig, object : CustomPeerConnectionObserver("localPeerCreation") {
             override fun onIceCandidate(iceCandidate: IceCandidate?) {
                 super.onIceCandidate(iceCandidate)
@@ -437,35 +442,39 @@ class MainActivity : AppCompatActivity(), View.OnClickListener, SignalingInterfa
         runOnUiThread { Toast.makeText(this@MainActivity, msg, Toast.LENGTH_SHORT).show() }
     }
 
-    private fun createCameraCapturer(enumerator: CameraEnumerator?): VideoCapturer? {
-        val deviceNames = enumerator!!.getDeviceNames()
+    private fun createVideoCapturer(): VideoCapturer? {
+        val videoCapturer: VideoCapturer?
+        videoCapturer = if (useCamera2()) {
+            createCameraCapturer(Camera2Enumerator(this))
+        } else {
+            createCameraCapturer(Camera1Enumerator(true))
+        }
+        return videoCapturer
+    }
 
-        // First, try to find front facing camera
-        Logging.d(TAG, "Looking for front facing cameras.")
+    private fun createCameraCapturer(enumerator: CameraEnumerator): VideoCapturer? {
+        val deviceNames = enumerator.deviceNames
         for (deviceName in deviceNames) {
-            if (enumerator != null) {
-                if (enumerator.isFrontFacing(deviceName)) {
-                    Logging.d(TAG, "Creating front facing camera capturer.")
-                    val videoCapture: VideoCapturer? = enumerator.createCapturer(deviceName, null)
-                    if (videoCapture != null) {
-                        return videoCapture
-                    }
+            if (enumerator.isFrontFacing(deviceName)) {
+                val videoCapturer: VideoCapturer? = enumerator.createCapturer(deviceName, null)
+                if (videoCapturer != null) {
+                    return videoCapturer
                 }
             }
         }
-
-        // Front facing camera not found, try something else
-        Logging.d(TAG, "Looking for other cameras.")
         for (deviceName in deviceNames) {
-            if (!enumerator?.isFrontFacing(deviceName)) {
-                Logging.d(TAG, "Creating other camera capturer.")
-                val videoCapturer: VideoCapturer? = enumerator?.createCapturer(deviceName, null)
+            if (!enumerator.isFrontFacing(deviceName)) {
+                val videoCapturer: VideoCapturer? = enumerator.createCapturer(deviceName, null)
                 if (videoCapturer != null) {
                     return videoCapturer
                 }
             }
         }
         return null
+    }
+
+    private fun useCamera2(): Boolean {
+        return Camera2Enumerator.isSupported(this)
     }
 
     companion object {

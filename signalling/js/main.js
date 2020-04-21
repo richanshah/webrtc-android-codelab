@@ -32,7 +32,7 @@ if (room === '') {
 }
 
 
-var socket = IO.connect("https://192.168.0.196:8080");
+var socket = IO.connect("https://192.168.43.252:8080");
 socket.emit('create or join', room);
 console.log('Attempted to create or join room', room);
 
